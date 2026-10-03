@@ -62,6 +62,10 @@ I separate the Fourier coefficients into three period ranges:
 | Mid frequency | \(10 < T \le 60\) trading days |
 | High frequency | \(2 \le T \le 10\) trading days |
 
+60 trading days is an illustrative approximation to a three-month trading horizon.
+10 trading days is an illustrative short-horizon boundary. These thresholds are
+chosen for interpretation, not estimated from the data.
+
 For example, the low-frequency spectrum is
 
 $$
@@ -110,41 +114,31 @@ so the original demeaned return signal is recovered to floating-point precision.
 
 ---
 
-## 3. What the Fourier representation looks like
+## 3. Normalized Fourier strength
 
-The squared magnitude
+X[k] is the Fourier coefficient, or projection onto Fourier direction k;
+|X[k]|² is its squared strength. The normalized value
 
-$$
-|X_k|^2
-$$
+$$p_k=\frac{|X[k]|^2}{\sum_j |X[j]|^2}$$
 
-measures how strongly the return signal is represented by the Fourier direction associated with bin \(k\).
+is the fraction of total squared magnitude associated with that bin, using the
+retained `rfft` coefficients. The plot shows $100p_k$ against period.
 
-Equivalently, it is the squared magnitude of the signal's projection onto that Fourier component.
-
-The plot below shows this quantity against period rather than bin number, making the different time scales easier to interpret.
-
-![Fourier power by period](figures/01_power_spectrum.png)
-
-The purpose of this figure is not to claim that SPY has a deterministic cycle at a particular period. It shows how the observed finite return series is distributed across Fourier time scales.
+![Normalized Fourier strength by period](figures/01_power_spectrum.png)
 
 ---
 
-## 4. Reconstructing the return signal by time scale
+## 4. Progressive reconstruction
 
-The inverse FFT makes the frequency decomposition visible in the original time domain.
+The three panels add low, then mid, then high frequencies over the same date
+window and with identical vertical limits. The last panel overlays the sum
+with the original demeaned returns, making the identity visible:
 
-![Low, mid and high frequency return components](figures/02_return_components.png)
+$$x[t]=x_{low}[t]+x_{mid}[t]+x_{high}[t].$$
 
-The difference between the components is clear:
+![Progressive reconstruction on a common scale](figures/02_progressive_reconstruction.png)
 
-- **Low frequency:** slowly varying movements over horizons longer than roughly 60 trading days.
-- **Mid frequency:** oscillations on roughly 10–60 day horizons.
-- **High frequency:** short-horizon fluctuations on roughly 2–10 day horizons.
-
-The original daily return series is the combination of these components.
-
-This is the central result of the project: the low-, mid-, and high-frequency curves are not unrelated smoothers. They are reconstructed from different parts of the **same Fourier representation** of the original signal.
+These are pieces of the same Fourier representation, not unrelated smoothers.
 
 ---
 
@@ -157,18 +151,6 @@ Daily returns are noisy, so the decomposition becomes easier to interpret after 
 The low-frequency component follows much of the broad shape of the cumulative demeaned return path.
 
 The intuition is straightforward: high-frequency components change sign frequently, so much of their effect cancels when summed over long intervals. Low-frequency components persist for longer periods and therefore contribute more strongly to the large-scale shape.
-
-The lower panel progressively reconstructs the signal:
-
-$$
-low
-\quad \rightarrow \quad
-low + mid
-\quad \rightarrow \quad
-low + mid + high.
-$$
-
-The final combination recovers the original demeaned cumulative return series.
 
 These curves are cumulative **demeaned log returns**, not the SPY price itself.
 
@@ -212,49 +194,9 @@ The EMA parameter corresponds to an effective span of about 19.1 observations.
 
 ![Fourier low-pass versus matched SMA and EMA](figures/04_filter_comparison.png)
 
-The filters behave differently even though their cutoff frequencies are approximately matched.
-
-### Fourier low-pass
-
-The Fourier reconstruction uses a hard frequency mask:
-
-- keep periods above 60 days,
-- remove the rest.
-
-This gives sharp frequency separation, but the calculation uses the full sample. It is therefore an **offline decomposition**, not a real-time trading indicator.
-
-### SMA
-
-The SMA is a finite impulse response filter:
-
-$$
-s_t =
-\frac{1}{M}
-\sum_{j=0}^{M-1} r_{t-j}.
-$$
-
-Its frequency response has zeros and side lobes.
-
-### EMA
-
-The EMA is an infinite impulse response filter:
-
-$$
-s_t =
-\alpha r_t
-+
-(1-\alpha)s_{t-1}.
-$$
-
-Expanding the recursion gives impulse-response weights
-
-$$
-h_n = \alpha(1-\alpha)^n.
-$$
-
-The weights decay exponentially, producing a smooth low-pass frequency response.
-
-Unlike the full-sample Fourier decomposition, both SMA and EMA are causal: their value at time \(t\) uses only current and past observations.
+The FFT low-pass uses a sharp mask and the full sample: it is an offline
+decomposition. SMA and EMA are causal filters with smoother roll-off and lag.
+Matching the cutoff does not make the reconstructed curves identical.
 
 ---
 
@@ -315,6 +257,7 @@ x = returns - returns.mean()
 
 X = np.fft.rfft(x)
 power = np.abs(X) ** 2
+p = power / power.sum()
 
 X_low = np.where(low_mask, X, 0)
 x_low = np.fft.irfft(X_low, n=len(x))
